@@ -1,0 +1,34 @@
+{
+  "name": "tinkercua",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --import tsx src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "check": "tsc --noEmit",
+    "probe": "node --import tsx scripts/probe.ts",
+    "test:browser": "node --import tsx scripts/browser-smoke.ts",
+    "test:ui": "node --import tsx scripts/ui-smoke.ts",
+    "test:session": "node --import tsx scripts/session-smoke.ts",
+    "test:understanding": "node --import tsx scripts/understanding-smoke.ts",
+    "chat": "node --import tsx scripts/open-chat.ts",
+    "test:layout": "node --import tsx scripts/layout-smoke.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "openai": "^7.15.0",
+    "playwright": "^1.63.0",
+    "zod": "^4.6.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.2",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  }
+}

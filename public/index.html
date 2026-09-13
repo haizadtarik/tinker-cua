@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TinkerCUA — From idea to circuit</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body>
+<div class="app">
+  <header class="topbar"><a class="brand" href="/" aria-label="TinkerCUA home"><span class="brand-mark" aria-hidden="true">t<span>↗</span></span>Tinker<span>CUA</span></a><span class="local-badge"><i></i> LOCAL WORKSPACE</span></header>
+  <main>
+    <aside class="workspace">
+      <div class="eyebrow">YOUR CIRCUIT WORKBENCH</div>
+      <h1>A little idea.<br>A real circuit.</h1>
+      <p class="intro">Describe it here. Watch it take shape in Tinkercad, with you in control.</p>
+      <div class="circuit-art" aria-hidden="true"><div class="board"><span>UNO</span><div class="chip"></div><span class="pin">D8</span></div><div class="wire"></div><div class="resistor"></div><div class="led"></div><span class="art-caption">IDEA → BUILD → TINKER</span></div>
+      <section class="session-card" aria-label="Browser session"><div class="session-heading"><span class="browser-icon" aria-hidden="true">▣</span><strong>Tinkercad browser</strong><span id="browser-dot" class="status-dot"></span></div><p id="browser-status">Opens when your build is ready.</p><a id="project-link" target="_blank" rel="noopener noreferrer" hidden>Open your circuit ↗</a><div class="session-note">A separate window on this computer.<br>You handle login. TinkerCUA handles the build.</div></section>
+      <div class="scope"><span class="eyebrow">START SMALL. MAKE IT BLINK.</span><p>Arduino Uno · external LED · resistor<br>Adjustable on and off timing</p></div>
+    </aside>
+    <section class="chat" aria-label="Circuit conversation">
+      <div class="chat-heading"><div><span class="spark" aria-hidden="true">✳</span><strong>Let’s build something</strong></div><div class="chat-actions"><span id="phase">Connecting…</span><button id="new-session" class="secondary" title="Start a fresh chat. Your Tinkercad login and circuits are kept.">+ New session</button></div></div>
+      <div id="conversation" class="conversation" role="log" aria-live="polite" aria-relevant="additions text"></div>
+      <div id="examples" class="examples"><button data-prompt="Build an Arduino with an external LED blinking one second on, one second off.">Build my first blinking LED <span>↗</span></button><button data-prompt="Build an Arduino with an external LED on for 200 milliseconds and off for 800 milliseconds.">Try a quick flash, slow pause <span>↗</span></button></div>
+      <div class="controls">
+        <div id="handoff" class="handoff" hidden><div><strong>Your turn in Tinkercad</strong><p>Finish signing in in the browser window, then return here.</p></div><button id="login" class="primary">I’m logged in <span>→</span></button></div>
+        <div id="help" class="handoff" hidden><div><strong>I need your help</strong><p id="help-reason"></p><p id="help-action"></p><p class="help-note">The agent is paused. You can also reply in chat.</p></div><button id="continue" class="primary">Continue <span>→</span></button></div>
+        <div id="safety" class="safety" hidden><strong>Review before continuing</strong><ul id="safety-list"></ul><label><input id="acknowledge" type="checkbox"> I reviewed these checks.</label><button id="resume" class="secondary" disabled>Continue from current screen</button></div>
+        <div id="activity" class="activity" hidden><span class="pulse"></span><span id="activity-text"></span><button id="stop" class="stop">Stop</button></div>
+        <p id="error" class="error" role="alert" hidden></p>
+        <form id="composer"><label class="sr-only" for="prompt">Describe your circuit or the next change</label><textarea id="prompt" rows="2" maxlength="2200" placeholder="Describe your circuit…" required></textarea><button id="send" class="send" type="submit" aria-label="Send message">↑</button></form>
+        <p id="composer-hint" class="composer-hint">Enter to send · Shift + Enter for a new line</p>
+      </div>
+    </section>
+  </main>
+  <footer><span>MAKE SOMETHING THAT LIGHTS UP.</span><span>Built with GPT-6 Astra · Tinkercad</span></footer>
+</div>
+</body></html>

@@ -1,0 +1,98 @@
+import { chromium } from 'playwright';
+import assert from 'node:assert/strict';
+import { mkdir, readFile } from 'node:fs/promises';
+import { request } from 'node:http';
+const origin = process.env.TEST_ORIGIN || 'http://127.0.0.1:4318';
+await mkdir('artifacts/ui-smoke', { recursive: true });
+const browser = await chromium.launch({ channel: 'chrome', headless: false });
+try {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 950 } });
+  if (process.env.TEST_SESSION_FILE) {
+    const saved = JSON.parse(await readFile(process.env.TEST_SESSION_FILE, 'utf8'));
+    await context.addCookies([{ name: 'tinkercua_session', value: saved.owner, url: origin, httpOnly: true, sameSite: 'Strict' }]);
+  }
+  const page = await context.newPage(); const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
+  await page.goto(origin); await page.waitForFunction(() => document.querySelector('#phase')?.textContent === 'Ready to build');
+  assert.equal(await page.title(), 'TinkerCUA — From idea to circuit');
+  assert.match(await page.locator('#conversation').textContent() || '', /What circuit would you like to build/);
+  await page.getByRole('button', { name: 'Build my first blinking LED' }).click();
+  assert.match(await page.locator('#prompt').inputValue(), /one second on/);
+  await page.screenshot({ path: 'artifacts/ui-smoke/chat-desktop.png', fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.screenshot({ path: 'artifacts/ui-smoke/chat-mobile.png', fullPage: true });
+  await page.setViewportSize({ width: 320, height: 900 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  const session = await context.request.get(`${origin}/api/session`).then(r => r.json());
+  assert.ok(session.token);
+  assert.equal((await fetch(`${origin}/api/session`)).status, 409);
+  assert.equal((await fetch(`${origin}/api/state`)).status, 403);
+  assert.equal((await fetch(`${origin}/api/events`)).status, 403);
+  assert.equal((await context.request.post(`${origin}/api/stop`)).status(), 403);
+  assert.equal((await context.request.post(`${origin}/api/stop`, { headers: { Origin: 'https://evil.example', 'X-TinkerCUA-Token': session.token } })).status(), 403);
+  const badHost = await new Promise(resolve => { const req = request(`${origin}/api/state`, { headers: { Host: 'evil.example' } }, res => { res.resume(); resolve(res.statusCode); }); req.end(); }); assert.equal(badHost, 403);
+  assert.equal((await fetch(`${origin}/.env`)).status, 404);
+  assert.equal((await fetch(`${origin}/artifacts/feasibility/api.json`)).status, 404);
+  // Mock only streamed run states, never submit a real build from a UI fixture.
+  const statePage = await context.newPage();
+  await statePage.addInitScript(() => { window.EventSource = class { constructor() { (window as any).testStream = this; } addEventListener() {} close() {} } as any; });
+  await statePage.goto(origin); await statePage.waitForFunction(() => !!(window as any).testStream);
+  const emit = (s: any) => statePage.evaluate(s => (window as any).testStream.onmessage({ data: JSON.stringify(s) }), s);
+  const initial = session.state;
+  await emit({ ...initial, phase: 'awaiting_login', browserOpen: true });
+  assert.equal(await statePage.locator('#login').isVisible(), true); assert.equal(await statePage.locator('#prompt').isDisabled(), true);
+  await statePage.screenshot({ path: 'artifacts/ui-smoke/login-handoff.png', fullPage: true });
+  await emit({ ...initial, phase: 'building', busy: true });
+  assert.equal(await statePage.locator('#stop').isVisible(), true); assert.equal(await statePage.locator('#send').isDisabled(), true); assert.equal(await statePage.locator('#login').isVisible(), false);
+  const paused = { ...initial, phase: 'needs_input', safetyChecks: [{ id: 'first', message: 'Review this action' }] };
+  await emit(paused); await statePage.locator('#acknowledge').check(); assert.equal(await statePage.locator('#resume').isEnabled(), true);
+  await emit({ ...paused, safetyChecks: [{ id: 'second', message: 'New review' }] });
+  assert.equal(await statePage.locator('#acknowledge').isChecked(), false); assert.equal(await statePage.locator('#resume').isDisabled(), true);
+  await emit({ ...initial, phase: 'needs_input', helpRequest: { reason: 'The resistor field is stuck.', action: 'Set 0.33 kΩ and press Enter, then Continue.' } });
+  assert.equal(await statePage.locator('#help').isVisible(), true);
+  assert.match(await statePage.locator('#help-action').textContent() || '', /0.33/);
+  let continued = false;
+  await statePage.route('**/api/continue', async route => { continued = true; await route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ ...initial, phase: 'building', busy: true }) }); });
+  await statePage.locator('#continue').click(); await statePage.locator('#help').waitFor({ state: 'hidden' });
+  assert.equal(continued, true); assert.equal(await statePage.locator('#new-session').isDisabled(), true);
+  await emit({ ...initial, revision: 100, phase: 'stopped', busy: false });
+  await emit({ ...initial, revision: 99, phase: 'stopped', busy: true });
+  assert.equal(await statePage.locator('#prompt').isEnabled(), true);
+  const ids: string[] = [];
+  await statePage.route('**/api/message', async route => {
+    ids.push(route.request().postDataJSON().requestId);
+    if (ids.length === 1) return route.abort('failed');
+    await route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ ...initial, revision: 101, phase: 'stopped', busy: false }) });
+  });
+  await statePage.locator('#prompt').fill('Make it blink twice as fast.');
+  await statePage.locator('#send').click(); await statePage.locator('#error').waitFor({ state: 'visible' });
+  await statePage.locator('#send').click(); await statePage.waitForFunction(() => !(document.querySelector('#prompt') as HTMLTextAreaElement).value);
+  assert.equal(ids.length, 2); assert.equal(ids[0], ids[1]);
+  // A second, cookie-free browser starts fresh directly from the ownership error.
+  const outsider = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const blocked = await outsider.newPage(); blocked.on('pageerror', e => errors.push(e.message));
+  await blocked.goto(origin); await blocked.locator('#error').waitFor({ state: 'visible' });
+  assert.match(await blocked.locator('#error').textContent() || '', /New session/);
+  assert.equal(await blocked.locator('#new-session').isEnabled(), true);
+  await blocked.screenshot({ path: 'artifacts/ui-smoke/new-session-blocked.png', fullPage: true });
+  const oldCookie = (await context.cookies()).find(c => c.name === 'tinkercua_session')!;
+  await blocked.locator('#new-session').click();
+  await blocked.waitForFunction(() => document.querySelector('#phase')?.textContent === 'Ready to build');
+  assert.equal(await blocked.locator('#prompt').isEnabled(), true);
+  const fresh = await outsider.request.get(`${origin}/api/session`).then(r => r.json());
+  assert.notEqual(fresh.state.id, session.state.id); assert.notEqual(fresh.token, session.token);
+  assert.equal(fresh.state.projectUrl, undefined); assert.equal(fresh.state.messages.length, 1);
+  assert.equal((await fetch(`${origin}/api/stop`, { method: 'POST', headers: { cookie: `tinkercua_session=${oldCookie.value}`, 'x-tinkercua-token': session.token } })).status, 403);
+  assert.equal((await fetch(`${origin}/api/new-session`, { method: 'POST', headers: { 'x-tinkercua-token': session.resetToken } })).status, 403);
+  await page.locator('#error').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('#prompt').isDisabled(), true);
+  assert.equal(await page.locator('#conversation').textContent(), '');
+  await blocked.screenshot({ path: 'artifacts/ui-smoke/new-session-ready.png', fullPage: true });
+  // The owning browser can start another session with the same button.
+  await blocked.locator('#new-session').click();
+  await blocked.waitForFunction(() => !(document.querySelector('#new-session') as HTMLButtonElement).disabled);
+  const next = await outsider.request.get(`${origin}/api/session`).then(r => r.json()); assert.notEqual(next.state.id, fresh.state.id);
+  assert.deepEqual(errors, []);
+  console.log('PASS: real web chat at desktop, 390px and 320px; prompt examples; owner-cookie/CSRF/origin/host protection; private files not served.');
+  console.log('PASS: new session from blocked and owning browsers, old token/stream invalidation; mocked login/build/safety/help/Continue UI states. No live Tinkercad construction asserted.');
+} finally { await browser.close(); }
